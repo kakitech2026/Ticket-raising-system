@@ -10,11 +10,12 @@ export const metadata = {
   title: "My Tickets | Tickety",
 };
 
-export default async function MyTicketsPage({
-  searchParams,
-}: {
-  searchParams: { search?: string; status?: string; priority?: string };
-}) {
+export default async function MyTicketsPage(
+  props: {
+    searchParams: Promise<{ search?: string; status?: string; priority?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
 
