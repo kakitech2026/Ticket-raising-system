@@ -2,13 +2,19 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import Link from "next/link";
-import { Search, Filter, Plus, Calendar, Ticket as TicketIcon } from "lucide-react";
+import { Search, Plus, Calendar, Ticket as TicketIcon } from "lucide-react";
+import { TicketFilters } from "./TicketFilters";
+import { Prisma } from "@prisma/client";
 
 export const metadata = {
   title: "My Tickets | Tickety",
 };
 
-export default async function MyTicketsPage() {
+export default async function MyTicketsPage({
+  searchParams,
+}: {
+  searchParams: { search?: string; status?: string; priority?: string };
+}) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
 
@@ -37,8 +43,32 @@ export default async function MyTicketsPage() {
     };
   }
 
+  // Apply filters from searchParams
+  const filters: Prisma.TicketWhereInput[] = [whereClause];
+
+  if (searchParams.search) {
+    filters.push({
+      OR: [
+        { title: { contains: searchParams.search, mode: "insensitive" } },
+        { description: { contains: searchParams.search, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (searchParams.status) {
+    filters.push({ status: searchParams.status as any });
+  }
+
+  if (searchParams.priority) {
+    filters.push({ priority: searchParams.priority as any });
+  }
+
+  const finalWhereClause: Prisma.TicketWhereInput = filters.length > 1 
+    ? { AND: filters } 
+    : whereClause;
+
   const tickets = await prisma.ticket.findMany({
-    where: whereClause,
+    where: finalWhereClause,
     orderBy: { createdAt: "desc" },
     include: {
       creator: true,
@@ -85,20 +115,7 @@ export default async function MyTicketsPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-          <input 
-            type="text"
-            placeholder="Search tickets (Visual only for now)..."
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-2.5 pl-10 pr-4 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-          />
-        </div>
-        <button className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 px-4 py-2.5 rounded-xl text-neutral-300 transition-colors">
-          <Filter className="w-5 h-5 text-neutral-500" />
-          Filter
-        </button>
-      </div>
+      <TicketFilters />
 
       {/* Tickets List */}
       <div className="bg-neutral-900/50 backdrop-blur-md border border-neutral-800 rounded-2xl overflow-hidden">
