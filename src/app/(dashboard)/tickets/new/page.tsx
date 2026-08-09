@@ -15,7 +15,27 @@ export default function CreateTicketPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
+  const [suggestedArticles, setSuggestedArticles] = useState<any[]>([]);
   const router = useRouter();
+
+  // Debounced search for KB deflection
+  useEffect(() => {
+    if (title.trim().length < 3) {
+      setSuggestedArticles([]);
+      return;
+    }
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/kb/search?q=${encodeURIComponent(title)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestedArticles(data.articles || []);
+        }
+      } catch (e) {}
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [title]);
 
   useEffect(() => {
     fetch("/api/users")
@@ -97,6 +117,26 @@ export default function CreateTicketPage() {
               placeholder="E.g. Unable to connect to VPN"
               className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all"
             />
+            
+            {suggestedArticles.length > 0 && (
+              <div className="mt-3 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-indigo-400 font-medium text-sm flex items-center">
+                    💡 Suggested Solutions
+                  </span>
+                  <span className="text-xs text-neutral-400">These might solve your problem without needing a ticket!</span>
+                </div>
+                <div className="space-y-2">
+                  {suggestedArticles.map((article) => (
+                    <Link key={article.id} href={`/kb/${article.id}`} target="_blank" className="block p-3 bg-neutral-900/80 border border-neutral-700 hover:border-indigo-500/50 rounded-lg transition-colors">
+                      <h4 className="text-neutral-200 text-sm font-medium">{article.title}</h4>
+                      <p className="text-neutral-500 text-xs line-clamp-1 mt-0.5">{article.content}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
               <div>
                 <label htmlFor="priority" className="block text-sm font-medium text-neutral-300 mb-1.5">

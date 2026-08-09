@@ -2,18 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, TicketPlus, Ticket, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, TicketPlus, Ticket, Settings, LogOut, Users, Bell, BarChart2, Book } from "lucide-react";
 import { signOut } from "next-auth/react";
 
-const navItems = [
+const baseNavItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "My Tickets", href: "/tickets", icon: Ticket },
   { name: "Create Ticket", href: "/tickets/new", icon: TicketPlus },
+  { name: "Knowledge Base", href: "/kb", icon: Book },
+  { name: "Notifications", href: "/notifications", icon: Bell },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ userRole }: { userRole?: string }) {
   const pathname = usePathname();
+
+  const navItems = [...baseNavItems];
+  if (userRole === "ADMIN") {
+    navItems.splice(3, 0, { name: "Users", href: "/users", icon: Users });
+  }
+  if (userRole === "ADMIN" || userRole === "TECH") {
+    navItems.splice(navItems.length - 1, 0, { name: "Analytics", href: "/analytics", icon: BarChart2 });
+  }
 
   return (
     <div className="hidden md:flex flex-col w-64 bg-neutral-900 border-r border-neutral-800 h-full">

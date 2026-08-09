@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { Ticket as TicketIcon, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Ticket as TicketIcon, CheckCircle2, Clock, AlertCircle, AlertTriangle } from "lucide-react";
+import { getSLAStatus, formatTimeRemaining } from "@/lib/sla";
 import Link from "next/link";
 
 export default async function DashboardPage() {
@@ -14,7 +15,7 @@ export default async function DashboardPage() {
   let whereClause = {};
   if (role === "EMPLOYEE") {
     whereClause = { creatorId: userId };
-  } else if (role === "TECH" || role === "TESTER") {
+  } else if (role === "TECH") {
     whereClause = {
       OR: [
         { creatorId: userId },
@@ -52,6 +53,22 @@ export default async function DashboardPage() {
     }
   };
 
+  const getSLAColor = (sla: string) => {
+    switch (sla) {
+      case "BREACHED": return "bg-red-500/10 text-red-400 border-red-500/20";
+      case "AT_RISK": return "bg-orange-500/10 text-orange-400 border-orange-500/20";
+      case "COMPLETED": return "bg-neutral-800 text-neutral-400 border-neutral-700";
+      default: return "bg-green-500/10 text-green-400 border-green-500/20";
+    }
+  };
+
+  const sortedTickets = [...tickets].sort((a, b) => {
+    const aSla = getSLAStatus(a.createdAt, a.priority, a.status === "COMPLETED");
+    const bSla = getSLAStatus(b.createdAt, b.priority, b.status === "COMPLETED");
+    const weight = { "BREACHED": 3, "AT_RISK": 2, "ON_TRACK": 1, "COMPLETED": 0 };
+    return weight[bSla] - weight[aSla];
+  });
+
   return (
     <div className="space-y-6">
       {/* Metrics Row */}
@@ -88,25 +105,41 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <div className="divide-y divide-neutral-800">
-            {tickets.map((ticket) => (
-              <Link key={ticket.id} href={`/tickets/${ticket.id}`} className="block p-6 hover:bg-neutral-800/30 transition-colors">
+            {sortedTickets.map((ticket) => {
+              const slaStatus = getSLAStatus(ticket.createdAt, ticket.priority, ticket.status === "COMPLETED");
+              const isResolved = ticket.status === "COMPLETED";
+
+              return (
+                <Link key={ticket.id} href={`/tickets/${ticket.id}`} className="block p-6 hover:bg-neutral-800/30 transition-colors">
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col gap-1">
                     <h3 className="text-neutral-200 font-medium">{ticket.title}</h3>
                     <p className="text-sm text-neutral-500 line-clamp-1">{ticket.description}</p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${getStatusColor(ticket.status)}`}>
-                      {ticket.status.replace("_", " ")}
-                    </span>
-                    <div className="flex flex-col items-end text-sm">
-                      <span className={`${getPriorityColor(ticket.priority)} font-medium`}>{ticket.priority}</span>
-                      <span className="text-neutral-500">{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${getStatusColor(ticket.status)}`}>
+                          {ticket.status.replace("_", " ")}
+                        </span>
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1 ${getSLAColor(slaStatus)}`}>
+                          {slaStatus === "BREACHED" && <AlertTriangle className="w-3 h-3" />}
+                          SLA: {slaStatus.replace("_", " ")}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className={`${getPriorityColor(ticket.priority)} font-medium`}>{ticket.priority}</span>
+                        {!isResolved && (
+                           <span className={slaStatus === "BREACHED" ? "text-red-400 font-medium" : "text-neutral-500"}>
+                             {formatTimeRemaining(ticket.dueDate || ticket.createdAt)}
+                           </span>
+                        )}
+                        <span className="text-neutral-600">{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
               </Link>
-            ))}
+            );
+          })}
           </div>
         )}
       </div>

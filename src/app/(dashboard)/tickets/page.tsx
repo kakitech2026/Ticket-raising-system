@@ -12,7 +12,7 @@ export const metadata = {
 
 export default async function MyTicketsPage(
   props: {
-    searchParams: Promise<{ search?: string; status?: string; priority?: string }>;
+    searchParams: Promise<{ q?: string; status?: string; priority?: string; department?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -25,33 +25,26 @@ export default async function MyTicketsPage(
   let whereClause = {};
   if (role === "EMPLOYEE") {
     whereClause = { creatorId: userId };
-  } else if (role === "TECH" || role === "TESTER") {
+  } else if (role === "TECH") {
     whereClause = {
       OR: [
         { creatorId: userId },
         { assigneeId: userId },
       ],
     };
-  } else if (role === "MANAGER" || role === "ADMIN") {
-    // For managers and admins, they might want to see all tickets or just theirs. 
-    // Assuming "My Tickets" means tickets they created or are assigned to them, but usually they see everything.
-    // Let's stick to their own tickets for "My tickets" to keep it distinct from an "All Tickets" view.
-    whereClause = {
-      OR: [
-        { creatorId: userId },
-        { assigneeId: userId },
-      ],
-    };
+  } else if (role === "ADMIN") {
+    // Admins need to see all tickets for triage
+    whereClause = {};
   }
 
   // Apply filters from searchParams
   const filters: Prisma.TicketWhereInput[] = [whereClause];
 
-  if (searchParams.search) {
+  if (searchParams.q) {
     filters.push({
       OR: [
-        { title: { contains: searchParams.search, mode: "insensitive" } },
-        { description: { contains: searchParams.search, mode: "insensitive" } },
+        { title: { contains: searchParams.q, mode: "insensitive" } },
+        { description: { contains: searchParams.q, mode: "insensitive" } },
       ],
     });
   }
@@ -62,6 +55,10 @@ export default async function MyTicketsPage(
 
   if (searchParams.priority) {
     filters.push({ priority: searchParams.priority as any });
+  }
+
+  if (searchParams.department) {
+    filters.push({ department: searchParams.department });
   }
 
   const finalWhereClause: Prisma.TicketWhereInput = filters.length > 1 

@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [department, setDepartment] = useState("");
   const [role, setRole] = useState("EMPLOYEE");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export default function RegisterPage() {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name, email, password, role, departmentId: department }),
       });
 
       const data = await res.json();
@@ -131,6 +132,26 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {role === "EMPLOYEE" && (
+              <div>
+                <label htmlFor="department" className="block text-sm font-medium text-neutral-300">
+                  Department
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="department"
+                    name="department"
+                    type="text"
+                    required
+                    placeholder="E.g. IT, HR, Sales, Design"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="appearance-none block w-full px-3 py-2 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all"
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <label htmlFor="role" className="block text-sm font-medium text-neutral-300">
                 Account Type
@@ -145,8 +166,6 @@ export default function RegisterPage() {
                 >
                   <option value="EMPLOYEE">Employee (Submit tickets)</option>
                   <option value="TECH">Support Tech (Resolve tickets)</option>
-                  <option value="MANAGER">Manager (Approve tickets)</option>
-                  <option value="ADMIN">Admin</option>
                 </select>
               </div>
             </div>

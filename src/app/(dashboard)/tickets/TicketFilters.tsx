@@ -1,120 +1,118 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Filter, X } from "lucide-react";
-import { useState, useTransition, useEffect } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useCallback, useState, useEffect } from "react";
+import { Search, Download, Filter } from "lucide-react";
 
 export function TicketFilters() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const pathname = usePathname();
 
-  const currentSearch = searchParams.get("search") || "";
-  const currentStatus = searchParams.get("status") || "";
-  const currentPriority = searchParams.get("priority") || "";
+  const [query, setQuery] = useState(searchParams.get("q") || "");
 
-  const [search, setSearch] = useState(currentSearch);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  // Update URL function
+  const createQueryString = useCallback(
+    (name: string, value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value) {
+        params.set(name, value);
+      } else {
+        params.delete(name);
+      }
+      return params.toString();
+    },
+    [searchParams]
+  );
+
+  const handleFilterChange = (key: string, value: string) => {
+    const qs = createQueryString(key, value);
+    // Force a hard navigation to bypass Next.js client router cache issues
+    window.location.href = qs ? `${pathname}?${qs}` : pathname;
+  };
 
   // Debounce search
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (search !== currentSearch) {
-        updateFilters({ search });
+    const delayDebounceFn = setTimeout(() => {
+      const urlQuery = searchParams.get("q") || "";
+      if (query !== urlQuery && (query.length === 0 || query.length >= 3 || searchParams.has("q"))) {
+        const qs = createQueryString("q", query);
+        window.location.href = qs ? `${pathname}?${qs}` : pathname;
       }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [search]);
+    }, 500);
 
-  const updateFilters = (updates: { search?: string; status?: string; priority?: string }) => {
-    const params = new URLSearchParams(searchParams.toString());
-    
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value) {
-        params.set(key, value);
-      } else {
-        params.delete(key);
-      }
-    });
+    return () => clearTimeout(delayDebounceFn);
+  }, [query, createQueryString, router, searchParams]);
 
-    startTransition(() => {
-      router.push(`/tickets?${params.toString()}`);
-    });
+  const handleExport = () => {
+    // We will hit our export API with the current search params
+    const currentQueryString = searchParams.toString();
+    window.location.href = `/api/export-csv${currentQueryString ? `?${currentQueryString}` : ""}`;
   };
-
-  const clearFilters = () => {
-    setSearch("");
-    startTransition(() => {
-      router.push("/tickets");
-    });
-  };
-
-  const hasActiveFilters = currentSearch || currentStatus || currentPriority;
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center w-full">
+    <div className="bg-neutral-900/50 backdrop-blur-md border border-neutral-800 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center mb-6">
       <div className="relative flex-1 w-full">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-        <input 
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+        <input
           type="text"
-          placeholder="Search tickets by title or description..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-2.5 pl-10 pr-4 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+          placeholder="Search tickets..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 bg-neutral-800/50 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-indigo-500 transition-colors"
         />
-        {isPending && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        )}
       </div>
       
-      <div className="flex items-center gap-2">
-        <div className="relative">
+      <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-neutral-500" />
           <select
-            value={currentStatus}
-            onChange={(e) => updateFilters({ status: e.target.value })}
-            className="appearance-none bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 px-4 py-2.5 pr-10 rounded-xl text-neutral-300 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
+            value={searchParams.get("status") || ""}
+            onChange={(e) => handleFilterChange("status", e.target.value)}
+            className="px-3 py-2 bg-neutral-800/50 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-indigo-500"
           >
             <option value="">All Statuses</option>
             <option value="NEEDS_APPROVAL">Needs Approval</option>
-            <option value="APPROVED">Approved</option>
+            <option value="IN_REVIEW">In Review</option>
+            <option value="ACCEPTED">Accepted</option>
             <option value="IN_PROGRESS">In Progress</option>
-            <option value="IN_TESTING">In Testing</option>
             <option value="COMPLETED">Completed</option>
+            <option value="RE_REVIEW">Re-Review</option>
             <option value="REJECTED">Rejected</option>
           </select>
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            <Filter className="w-4 h-4 text-neutral-500" />
-          </div>
         </div>
 
-        <div className="relative">
-          <select
-            value={currentPriority}
-            onChange={(e) => updateFilters({ priority: e.target.value })}
-            className="appearance-none bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 px-4 py-2.5 pr-10 rounded-xl text-neutral-300 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
-          >
-            <option value="">All Priorities</option>
-            <option value="LOW">Low</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="HIGH">High</option>
-            <option value="CRITICAL">Critical</option>
-          </select>
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            <Filter className="w-4 h-4 text-neutral-500" />
-          </div>
-        </div>
+        <select
+          value={searchParams.get("priority") || ""}
+          onChange={(e) => handleFilterChange("priority", e.target.value)}
+          className="px-3 py-2 bg-neutral-800/50 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-indigo-500"
+        >
+          <option value="">All Priorities</option>
+          <option value="LOW">Low</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HIGH">High</option>
+          <option value="CRITICAL">Critical</option>
+        </select>
 
-        {hasActiveFilters && (
-          <button 
-            onClick={clearFilters}
-            className="p-2.5 bg-neutral-900 border border-neutral-800 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 rounded-xl text-neutral-400 transition-colors"
-            title="Clear filters"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+        <select
+          value={searchParams.get("department") || ""}
+          onChange={(e) => handleFilterChange("department", e.target.value)}
+          className="px-3 py-2 bg-neutral-800/50 border border-neutral-700 rounded-lg text-sm text-neutral-200 focus:outline-none focus:border-indigo-500"
+        >
+          <option value="">All Departments</option>
+          <option value="IT">IT</option>
+          <option value="HR">HR</option>
+          <option value="FACILITIES">Facilities</option>
+          <option value="FINANCE">Finance</option>
+        </select>
+
+        <button
+          onClick={handleExport}
+          className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors ml-auto md:ml-2 whitespace-nowrap"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export CSV
+        </button>
       </div>
     </div>
   );

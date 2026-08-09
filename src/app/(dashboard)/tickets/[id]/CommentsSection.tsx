@@ -39,7 +39,7 @@ export function CommentsSection({
     }
   };
 
-  const isStaff = ["TECH", "MANAGER", "ADMIN", "TESTER"].includes(userRole);
+  const isStaff = ["TECH", "ADMIN"].includes(userRole);
 
   return (
     <div className="space-y-6">

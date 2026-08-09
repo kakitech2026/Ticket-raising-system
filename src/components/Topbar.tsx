@@ -3,6 +3,8 @@
 import { useSession } from "next-auth/react";
 import { Bell, Search, UserCircle } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { NotificationBell } from "@/components/NotificationBell";
+import { PushManager } from "@/components/PushManager";
 
 export function Topbar() {
   const { data: session } = useSession();
@@ -31,10 +33,10 @@ export function Topbar() {
         </div>
 
         {/* Notifications */}
-        <button className="relative text-neutral-400 hover:text-neutral-200 transition-colors">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-0 right-0 w-2 h-2 bg-indigo-500 rounded-full border border-neutral-900"></span>
-        </button>
+        <div className="flex items-center gap-3">
+          <PushManager />
+          <NotificationBell />
+        </div>
 
         {/* User Profile */}
         <div className="flex items-center gap-3 pl-6 border-l border-neutral-800">

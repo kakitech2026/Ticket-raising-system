@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { Priority } from "@prisma/client";
+import { calculateSLADeadline } from "@/lib/sla";
 
 export async function POST(req: Request) {
   try {
@@ -26,7 +27,9 @@ export async function POST(req: Request) {
         description,
         priority: priority as Priority,
         department,
+        dueDate: calculateSLADeadline(new Date(), priority as Priority),
         assigneeId: assigneeId || undefined,
+        requestedAssigneeId: undefined,
         creatorId: session.user.id,
         timeline: {
           create: {
@@ -39,6 +42,19 @@ export async function POST(req: Request) {
         } : undefined
       },
     });
+
+    if (assigneeId) {
+      await prisma.notification.create({
+        data: {
+          userId: assigneeId,
+          message: `You have been assigned to a new ticket: ${ticket.title}`,
+          ticketId: ticket.id,
+        },
+      });
+      
+      const { sendPushNotification } = await import("@/lib/push");
+      await sendPushNotification(assigneeId, "New Ticket Assigned", `You have been assigned to: ${ticket.title}`, `/tickets/${ticket.id}`);
+    }
 
     return NextResponse.json(ticket, { status: 201 });
   } catch (error) {
