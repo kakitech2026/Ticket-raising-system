@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSLAStatus } from "@/lib/sla";
-import { sendPushNotification } from "@/lib/webpush";
+import { sendPushNotification } from "@/lib/push";
 
 export async function GET(req: Request) {
   try {
