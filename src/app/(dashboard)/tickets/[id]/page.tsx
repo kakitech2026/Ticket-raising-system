@@ -68,7 +68,7 @@ export default async function TicketDetailPage({
   let reReviewImages: any[] = [];
   
   if (latestReReviewEvent) {
-    const match = latestReReviewEvent.action.match(/Reason: "(.*)"$/s);
+    const match = latestReReviewEvent.action.match(/Reason: "([\s\S]*)"$/);
     reReviewReason = match ? match[1] : latestReReviewEvent.action;
     reReviewImages = latestReReviewEvent.images || [];
   }
