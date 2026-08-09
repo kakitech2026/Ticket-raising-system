@@ -29,20 +29,22 @@ export async function GET(req: Request) {
         // Send a notification to the assignee if they haven't been spammed recently
         // (In a real system, you'd want to store the "last SLA notification sent" timestamp to avoid duplicate alerts every minute)
         
-        await sendPushNotification(ticket.assigneeId, {
-          title: "🚨 SLA Breached!",
-          body: `Ticket "${ticket.title}" has breached its SLA deadline. Please resolve immediately.`,
-          url: `/tickets/${ticket.id}`
-        });
+        await sendPushNotification(
+          ticket.assigneeId, 
+          "🚨 SLA Breached!", 
+          `Ticket "${ticket.title}" has breached its SLA deadline. Please resolve immediately.`, 
+          `/tickets/${ticket.id}`
+        );
 
         // Also notify admins
         const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
         for (const admin of admins) {
-           await sendPushNotification(admin.id, {
-            title: "🚨 SLA Breached",
-            body: `Tech ${ticket.assignee?.name} missed the SLA for ticket "${ticket.title}".`,
-            url: `/tickets/${ticket.id}`
-          });
+           await sendPushNotification(
+             admin.id,
+             "🚨 SLA Breached",
+             `Tech ${ticket.assignee?.name} missed the SLA for ticket "${ticket.title}".`,
+             `/tickets/${ticket.id}`
+           );
         }
         
         breachedCount++;
