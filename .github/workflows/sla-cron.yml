@@ -1,0 +1,37 @@
+name: Automated SLA Monitor
+
+on:
+  schedule:
+    # Trigger SLA check every 10 minutes (free on GitHub Actions)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  check-sla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger SLA Check & Notification Delivery
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          TARGET_URL="${APP_URL:-https://your-domain.vercel.app}"
+          echo "Triggering SLA monitor at $TARGET_URL/api/cron/sla-check..."
+          
+          if [ -n "$CRON_SECRET" ]; then
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$TARGET_URL/api/cron/sla-check" \
+              -H "Authorization: Bearer $CRON_SECRET")
+          else
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$TARGET_URL/api/cron/sla-check")
+          fi
+          
+          HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body: $HTTP_BODY"
+          
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "SLA check request failed with HTTP $HTTP_STATUS"
+            exit 1
+          fi
