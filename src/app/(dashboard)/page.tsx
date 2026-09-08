@@ -109,6 +109,10 @@ export default async function DashboardPage() {
           slaDueAt: true,
           creator: { select: { name: true, email: true } },
           _count: { select: { comments: true } },
+          notifications: {
+            where: { userId: user.id, isRead: false },
+            select: { id: true },
+          },
         },
       }),
       // Other active tickets assigned to me
@@ -133,6 +137,10 @@ export default async function DashboardPage() {
           slaDueAt: true,
           creator: { select: { name: true } },
           _count: { select: { comments: true } },
+          notifications: {
+            where: { userId: user.id, isRead: false },
+            select: { id: true },
+          },
         },
       }),
       // Unassigned tickets waiting in queue
@@ -154,6 +162,10 @@ export default async function DashboardPage() {
           createdAt: true,
           slaDueAt: true,
           _count: { select: { comments: true } },
+          notifications: {
+            where: { userId: user.id, isRead: false },
+            select: { id: true },
+          },
         },
       }),
     ]);
@@ -287,19 +299,25 @@ export default async function DashboardPage() {
                       </span>
                       <PriorityBadge priority={t.priority} />
                       <StatusBadge status={t.status} />
-                      {t._count.comments > 0 && (
+                      {t.notifications.length > 0 && (
                         <span
-                          title={`${t._count.comments} comment${t._count.comments > 1 ? "s" : ""}`}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-800/60"
+                          title={`${t.notifications.length} new unread update${t.notifications.length > 1 ? "s" : ""}`}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse"
                         >
-                          <MessageSquare className="w-3 h-3 text-indigo-400" />
-                          <span>{t._count.comments}</span>
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                          <span>Unread</span>
                         </span>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
                       <span>By <strong className="text-neutral-300">{t.creator.name}</strong> ({t.department})</span>
                       <span suppressHydrationWarning>Created {formatDate(t.createdAt)}</span>
+                      {t._count.comments > 0 && (
+                        <>
+                          <span className="text-neutral-500">•</span>
+                          <span>{t._count.comments} {t._count.comments === 1 ? "comment" : "comments"}</span>
+                        </>
+                      )}
                       <span className="text-neutral-500">•</span>
                       <span className="text-amber-400 font-medium">SLA: {formatTimeRemaining(t.slaDueAt)}</span>
                     </div>
@@ -338,10 +356,10 @@ export default async function DashboardPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 truncate">
                         <p className="text-sm font-medium text-neutral-200 truncate">{t.title}</p>
-                        {t._count.comments > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 bg-indigo-950/60 px-1.5 py-0.2 rounded border border-indigo-800/40">
-                            <MessageSquare className="w-2.5 h-2.5" />
-                            {t._count.comments}
+                        {t.notifications.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 bg-rose-500/20 px-1.5 py-0.5 rounded-full border border-rose-500/30 shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                            Unread
                           </span>
                         )}
                       </div>
@@ -349,6 +367,7 @@ export default async function DashboardPage() {
                     </div>
                     <p className="text-xs text-neutral-400 mt-1">
                       {t.department} • Est: {t.dueDate ? formatDate(t.dueDate) : "No estimate set"}
+                      {t._count.comments > 0 && ` • ${t._count.comments} ${t._count.comments === 1 ? "comment" : "comments"}`}
                     </p>
                   </Link>
                 ))}
@@ -377,10 +396,10 @@ export default async function DashboardPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 truncate">
                         <p className="text-sm font-medium text-neutral-200 truncate">{t.title}</p>
-                        {t._count.comments > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 bg-indigo-950/60 px-1.5 py-0.2 rounded border border-indigo-800/40">
-                            <MessageSquare className="w-2.5 h-2.5" />
-                            {t._count.comments}
+                        {t.notifications.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 bg-rose-500/20 px-1.5 py-0.5 rounded-full border border-rose-500/30 shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                            Unread
                           </span>
                         )}
                       </div>
@@ -388,6 +407,7 @@ export default async function DashboardPage() {
                     </div>
                     <p className="text-xs text-neutral-400 mt-1">
                       {t.department} • SLA Due: {formatTimeRemaining(t.slaDueAt)}
+                      {t._count.comments > 0 && ` • ${t._count.comments} ${t._count.comments === 1 ? "comment" : "comments"}`}
                     </p>
                   </Link>
                 ))}
@@ -423,6 +443,10 @@ export default async function DashboardPage() {
         slaDueAt: true,
         assignee: { select: { name: true } },
         _count: { select: { comments: true } },
+        notifications: {
+          where: { userId: user.id, isRead: false },
+          select: { id: true },
+        },
       },
     }),
   ]);
@@ -520,13 +544,13 @@ export default async function DashboardPage() {
                     </span>
                     <PriorityBadge priority={t.priority} />
                     <StatusBadge status={t.status} />
-                    {t._count.comments > 0 && (
+                    {t.notifications.length > 0 && (
                       <span
-                        title={`${t._count.comments} comment${t._count.comments > 1 ? "s" : ""}`}
-                        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-800/60"
+                        title={`${t.notifications.length} new unread update${t.notifications.length > 1 ? "s" : ""}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse"
                       >
-                        <MessageSquare className="w-3 h-3 text-indigo-400" />
-                        <span>{t._count.comments}</span>
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                        <span>Unread</span>
                       </span>
                     )}
                   </div>
@@ -534,6 +558,12 @@ export default async function DashboardPage() {
                     <span>Department: <strong className="text-neutral-300">{t.department}</strong></span>
                     <span>Assigned: <strong className="text-neutral-300">{t.assignee?.name ?? "Unassigned"}</strong></span>
                     <span suppressHydrationWarning>Created {formatDate(t.createdAt)}</span>
+                    {t._count.comments > 0 && (
+                      <>
+                        <span className="text-neutral-500">•</span>
+                        <span>{t._count.comments} {t._count.comments === 1 ? "comment" : "comments"}</span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="shrink-0 flex items-center text-xs text-neutral-400">

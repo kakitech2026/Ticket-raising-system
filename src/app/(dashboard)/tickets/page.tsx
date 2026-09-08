@@ -62,6 +62,10 @@ export default async function TicketsPage({
         createdAt: true,
         assignee: { select: { name: true } },
         _count: { select: { comments: true } },
+        notifications: {
+          where: { userId: session.user.id, isRead: false },
+          select: { id: true },
+        },
       },
     }),
     prisma.ticket.count({ where: query.where }),
@@ -208,13 +212,13 @@ export default async function TicketsPage({
                       >
                         {t.title}
                       </Link>
-                      {t._count.comments > 0 && (
+                      {t.notifications.length > 0 && (
                         <span
-                          title={`${t._count.comments} comment${t._count.comments > 1 ? "s" : ""}`}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-800/60 shrink-0"
+                          title={`${t.notifications.length} new unread update${t.notifications.length > 1 ? "s" : ""}`}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse shrink-0"
                         >
-                          <MessageSquare className="w-3 h-3 text-indigo-400" />
-                          <span>{t._count.comments}</span>
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                          <span>Unread</span>
                         </span>
                       )}
                     </div>
