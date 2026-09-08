@@ -23,6 +23,11 @@ export default async function TicketDetailPage({ params, searchParams }: { param
     _count: { select: { comments: { where: actor.role === "EMPLOYEE" ? { isInternal: false } : {} }, timeline: true, slaCycles: true } },
   } });
   if (!ticket) return notFound();
+  // Automatically clear unread notifications on this ticket for the viewing user
+  await prisma.notification.updateMany({
+    where: { userId: actor.id, ticketId: id, isRead: false },
+    data: { isRead: true },
+  });
   const projects = await prisma.project.findMany({ where: projectWhere(actor), select: { id: true, name: true }, orderBy: { name: "asc" }, take: 100 });
   const closed = ["COMPLETED", "REJECTED"].includes(ticket.status);
   const sla = getSLAStatus(ticket.slaStartedAt, ticket.priority, ticket.status === "COMPLETED", ticket.slaDueAt, ticket.status === "REJECTED");

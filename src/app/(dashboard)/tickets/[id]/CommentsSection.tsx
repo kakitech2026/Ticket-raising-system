@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { requestJson, jsonOptions, errorMessage } from "@/lib/client-api";
 import { Lock, Send, MessageSquare } from "lucide-react";
@@ -27,6 +27,11 @@ export function CommentsSection({
   const [loading, setLoading] = useState(false);
   const requestKey = useRef<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    // Notify topbar bell that ticket notifications have been cleared on view
+    window.dispatchEvent(new Event("notifications-updated"));
+  }, [ticketId]);
 
   return (
     <div className="space-y-5">
@@ -97,6 +102,7 @@ export function CommentsSection({
             setContent("");
             setInternal(false);
             requestKey.current = null;
+            window.dispatchEvent(new Event("notifications-updated"));
             router.refresh();
           } catch (e) {
             setError(errorMessage(e));

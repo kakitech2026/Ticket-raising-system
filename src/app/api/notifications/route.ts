@@ -16,9 +16,32 @@ export async function GET(req: Request) {
 }
 export async function PATCH(req: Request) {
   try {
-    const actor = await requireUser(), data = await readJson(req, z.object({ id: z.string().optional(), markAll: z.boolean().optional() }).strict());
-    if (!data.markAll && !data.id) throw new ApiError(400, "Select a notification");
-    await prisma.notification.updateMany({ where: { userId: actor.id, ...(data.markAll ? {} : { id: data.id }) }, data: { isRead: true } });
+    const actor = await requireUser(),
+      data = await readJson(
+        req,
+        z
+          .object({
+            id: z.string().optional(),
+            ticketId: z.string().optional(),
+            markAll: z.boolean().optional(),
+          })
+          .strict()
+      );
+    if (!data.markAll && !data.id && !data.ticketId)
+      throw new ApiError(400, "Select a notification or ticket");
+    await prisma.notification.updateMany({
+      where: {
+        userId: actor.id,
+        ...(data.markAll
+          ? {}
+          : data.ticketId
+          ? { ticketId: data.ticketId }
+          : { id: data.id }),
+      },
+      data: { isRead: true },
+    });
     return NextResponse.json({ success: true });
-  } catch (error) { return apiError(error); }
+  } catch (error) {
+    return apiError(error);
+  }
 }

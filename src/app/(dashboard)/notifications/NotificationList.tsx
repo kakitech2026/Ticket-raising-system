@@ -102,6 +102,9 @@ export function NotificationList({
                 <Link
                   href={"/tickets/" + n.ticketId}
                   className="text-indigo-400 hover:text-indigo-300 font-medium"
+                  onClick={() => {
+                    if (!n.isRead) mark(n.id);
+                  }}
                 >
                   View ticket &rarr;
                 </Link>
