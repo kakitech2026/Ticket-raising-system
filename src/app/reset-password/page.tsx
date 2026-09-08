@@ -1,0 +1,8 @@
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { requestJson,jsonOptions,errorMessage } from "@/lib/client-api";
+export default function ResetPassword(){
+ const [error,setError]=useState(""),[busy,setBusy]=useState(false),[done,setDone]=useState(false);
+ return <main className="min-h-screen bg-neutral-950 text-neutral-100 p-6 py-16"><div className="max-w-md mx-auto space-y-4"><h1 className="text-2xl font-semibold">Reset password</h1>{done?<><p>Your password changed. Previous sessions have been revoked.</p><Link href="/login" className="btn">Sign in</Link></>:<form className="panel space-y-4" onSubmit={async e=>{e.preventDefault();setBusy(true);setError("");const fields=new FormData(e.currentTarget);try{if(fields.get("password")!==fields.get("confirm"))throw new Error("Passwords do not match");const token=new URLSearchParams(window.location.hash.slice(1)).get("token");await requestJson("/api/reset-password",jsonOptions("POST",{token,password:fields.get("password")}));window.history.replaceState(null,"","/reset-password");setDone(true);}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}}>{error&&<p role="alert" className="text-red-400">{error}</p>}<label className="block">New password<input className="field" name="password" type="password" required minLength={12} maxLength={72} autoComplete="new-password"/></label><label className="block">Confirm password<input className="field" name="confirm" type="password" required minLength={12} maxLength={72} autoComplete="new-password"/></label><button className="btn" disabled={busy}>Reset password</button></form>}</div></main>;
+}

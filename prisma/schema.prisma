@@ -13,6 +13,8 @@ model User {
   name         String
   role         Role      @default(EMPLOYEE)
   departmentId String?
+  isActive     Boolean   @default(true)
+  sessionVersion Int     @default(0)
   tickets      Ticket[]  @relation("CreatedTickets")
   assigned     Ticket[]  @relation("AssignedTickets")
   requestedTickets Ticket[] @relation("RequestedAssignee")
@@ -20,6 +22,9 @@ model User {
   notifications Notification[]
   pushSubscriptions PushSubscription[]
   authoredArticles Article[] @relation("AuthoredArticles")
+  assignedArticles Article[] @relation("ArticleAssignee")
+  ownedProjects   Project[] @relation("ProjectOwner")
+  memberProjects  Project[] @relation("ProjectMembers")
 }
 
 model Ticket {
@@ -30,7 +35,7 @@ model Ticket {
   priority    Priority       @default(MEDIUM)
   
   creatorId   String
-  creator     User           @relation("CreatedTickets", fields: [creatorId], references: [id], onDelete: Cascade)
+  creator     User           @relation("CreatedTickets", fields: [creatorId], references: [id], onDelete: Restrict)
   
   assigneeId  String?
   assignee    User?          @relation("AssignedTickets", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -44,21 +49,37 @@ model Ticket {
   comments    Comment[]
   timeline    TimelineEvent[]
   dueDate     DateTime?
+  slaDueAt    DateTime
+  slaStartedAt DateTime @default(now())
+  completedAt DateTime?
+  resolutionSummary String?
+  version     Int @default(0)
+  requestKey  String? @unique
+  slaCycles   TicketSlaCycle[]
+  articles    Article[]
 
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   notifications Notification[]
+  projectId     String?
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  @@index([creatorId, createdAt])
+  @@index([assigneeId, status, createdAt])
+  @@index([projectId, createdAt])
+  @@index([status, slaDueAt])
 }
 
 model Comment {
   id        String   @id @default(cuid())
+  requestKey String? @unique
   content   String
   ticketId  String
   ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
   isInternal Boolean @default(false)
   createdAt DateTime @default(now())
+  @@index([ticketId, createdAt])
 }
 
 model TimelineEvent {
@@ -114,6 +135,12 @@ model Notification {
   ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+  dedupeKey String? @unique
+  pushSentAt DateTime?
+  pushAttempts Int @default(0)
+  pushNextAttemptAt DateTime @default(now())
+  @@index([userId, isRead, createdAt])
+  @@index([pushSentAt, pushNextAttemptAt])
 }
 
 model PushSubscription {
@@ -131,7 +158,67 @@ model Article {
   title     String
   content   String   // Markdown or rich text
   authorId  String
-  author    User     @relation("AuthoredArticles", fields: [authorId], references: [id], onDelete: Cascade)
+  author    User     @relation("AuthoredArticles", fields: [authorId], references: [id], onDelete: Restrict)
+  assigneeId String
+  assignee User @relation("ArticleAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  sourceTicketId String?
+  sourceTicket Ticket? @relation(fields: [sourceTicketId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@index([assigneeId, updatedAt])
+}
+
+model Project {
+  id          String         @id @default(cuid())
+  name        String
+  description String
+  status      ProjectStatus  @default(PLANNING)
+  startDate   DateTime?
+  endDate     DateTime?
+
+  ownerId     String
+  owner       User           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  
+  members     User[]         @relation("ProjectMembers")
+  
+  tickets     Ticket[]
+  
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  version     Int            @default(0)
+  @@index([ownerId, createdAt])
+}
+
+model TicketSlaCycle {
+  id String @id @default(cuid())
+  ticketId String
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  startedAt DateTime @default(now())
+  dueAt DateTime
+  endedAt DateTime?
+  outcome TicketStatus?
+  assigneeId String?
+  @@index([ticketId, startedAt])
+  @@index([endedAt, outcome])
+}
+
+model RateLimit {
+  key String @id
+  count Int @default(1)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model PasswordReset {
+  tokenHash String @id
+  userId String
+  expiresAt DateTime
+  @@index([userId])
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
 }

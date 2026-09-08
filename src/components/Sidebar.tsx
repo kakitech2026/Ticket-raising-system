@@ -1,68 +1,14 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, TicketPlus, Ticket, Settings, LogOut, Users, Bell, BarChart2, Book } from "lucide-react";
 import { signOut } from "next-auth/react";
-
-const baseNavItems = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "My Tickets", href: "/tickets", icon: Ticket },
-  { name: "Create Ticket", href: "/tickets/new", icon: TicketPlus },
-  { name: "Knowledge Base", href: "/kb", icon: Book },
-  { name: "Notifications", href: "/notifications", icon: Bell },
-  { name: "Settings", href: "/settings", icon: Settings },
-];
-
-export function Sidebar({ userRole }: { userRole?: string }) {
-  const pathname = usePathname();
-
-  const navItems = [...baseNavItems];
-  if (userRole === "ADMIN") {
-    navItems.splice(3, 0, { name: "Users", href: "/users", icon: Users });
-  }
-  if (userRole === "ADMIN" || userRole === "TECH") {
-    navItems.splice(navItems.length - 1, 0, { name: "Analytics", href: "/analytics", icon: BarChart2 });
-  }
-
-  return (
-    <div className="hidden md:flex flex-col w-64 bg-neutral-900 border-r border-neutral-800 h-full">
-      <div className="p-6 flex items-center gap-3">
-        <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
-          <Ticket className="w-6 h-6 text-white" />
-        </div>
-        <span className="text-xl font-bold text-white tracking-tight">Tickety</span>
-      </div>
-
-      <nav className="flex-1 px-4 space-y-1 mt-4">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all ${
-                isActive
-                  ? "bg-indigo-600/10 text-indigo-400"
-                  : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-              }`}
-            >
-              <item.icon className={`w-5 h-5 ${isActive ? "text-indigo-400" : "text-neutral-500"}`} />
-              {item.name}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="p-4 border-t border-neutral-800">
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-neutral-400 hover:bg-neutral-800 hover:text-red-400 transition-all w-full text-left"
-        >
-          <LogOut className="w-5 h-5 text-neutral-500" />
-          Sign out
-        </button>
-      </div>
-    </div>
-  );
+import { useState } from "react";
+import { usePush } from "./PushManager";
+export function Navigation({userRole}:{userRole?:string}){
+  const path=usePathname(),push=usePush(),[busy,setBusy]=useState(false);
+  const links=[["Dashboard","/"],["Tickets","/tickets"],["Create ticket","/tickets/new"],["Projects","/projects"],["Knowledge base","/kb"],["Notifications","/notifications"],["Settings","/settings"]];
+  if(userRole==="ADMIN")links.push(["Users","/users"]);
+  if(userRole==="ADMIN"||userRole==="TECH")links.push(["Unassigned queue","/tickets?queue=unassigned"],["Analytics","/analytics"]);
+  return <nav aria-label="Main navigation" className="space-y-1">{links.map(([name,href])=><Link aria-current={path===href?"page":undefined} key={href} href={href} className={"block rounded-lg px-3 py-2 "+(path===href?"bg-indigo-600/15 text-indigo-300":"text-neutral-300 hover:bg-neutral-800")}>{name}</Link>)}<button className="block px-3 py-2 text-neutral-300" disabled={busy} onClick={async()=>{setBusy(true);try{await push.detach();}catch{/* Local subscription is already invalidated; logout must remain available. */}await signOut({callbackUrl:"/login"});}}>Sign out</button></nav>;
 }
+export function Sidebar({userRole}:{userRole?:string}){return <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-neutral-800 bg-neutral-900 p-4 overflow-y-auto"><Link href="/" className="text-xl font-semibold p-3 mb-4">Tickety</Link><Navigation userRole={userRole}/></aside>;}

@@ -1,0 +1,2 @@
+import { ProjectForm } from "@/components/ProjectForm";
+export default function NewProject(){return <div className="max-w-3xl mx-auto space-y-6"><h1 className="text-2xl font-semibold">Create project</h1><ProjectForm/></div>;}

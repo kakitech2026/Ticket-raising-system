@@ -24,3 +24,20 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@layer components {
+ .panel { @apply rounded-xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6; }
+ .field { @apply block w-full mt-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-400; }
+ .btn { @apply inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed; }
+}
+button, a, input, select, textarea { touch-action: manipulation; }
+:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+.markdown h1,.markdown h2,.markdown h3 { font-weight: 600; margin: 1.5em 0 .6em; font-size: 1.25em; }
+.markdown p,.markdown ul,.markdown ol { margin: .8em 0; }
+.markdown ul { list-style: disc; padding-left: 1.5em; }
+.markdown ol { list-style: decimal; padding-left: 1.5em; }
+.markdown a { color: #a5b4fc; text-decoration: underline; }
+.markdown pre { overflow-x: auto; padding: 1em; background: #171717; border-radius: .5em; }
+.markdown table { display: block; overflow-x: auto; }
+.markdown th,.markdown td { border: 1px solid #404040; padding: .5em; }

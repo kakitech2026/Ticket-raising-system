@@ -1,52 +1,16 @@
 "use client";
-
 import { useSession } from "next-auth/react";
-import { Bell, Search, UserCircle } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { NotificationBell } from "@/components/NotificationBell";
-import { PushManager } from "@/components/PushManager";
-
-export function Topbar() {
-  const { data: session } = useSession();
-  const pathname = usePathname();
-
-  // Basic breadcrumbs based on pathname
-  const routeName = pathname === "/" 
-    ? "Dashboard" 
-    : pathname.split("/").filter(Boolean).map(segment => segment.charAt(0).toUpperCase() + segment.slice(1)).join(" / ");
-
-  return (
-    <header className="h-16 border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-md flex items-center justify-between px-6 sticky top-0 z-10">
-      <div className="flex items-center gap-4">
-        <h1 className="text-xl font-semibold text-neutral-100">{routeName}</h1>
-      </div>
-
-      <div className="flex items-center gap-6">
-        {/* Search */}
-        <div className="relative hidden md:block">
-          <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search tickets..."
-            className="w-64 bg-neutral-800/50 border border-neutral-700 rounded-full pl-9 pr-4 py-1.5 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-          />
-        </div>
-
-        {/* Notifications */}
-        <div className="flex items-center gap-3">
-          <PushManager />
-          <NotificationBell />
-        </div>
-
-        {/* User Profile */}
-        <div className="flex items-center gap-3 pl-6 border-l border-neutral-800">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-neutral-200">{session?.user?.name || "Loading..."}</p>
-            <p className="text-xs text-neutral-500">{session?.user?.role || "USER"}</p>
-          </div>
-          <UserCircle className="w-8 h-8 text-neutral-400" />
-        </div>
-      </div>
-    </header>
-  );
+import { usePathname,useRouter } from "next/navigation";
+import { useState } from "react";
+import { Navigation } from "./Sidebar";
+import { NotificationBell } from "./NotificationBell";
+export function Topbar(){
+  const {data:session}=useSession(),path=usePathname(),router=useRouter(),[query,setQuery]=useState("");
+  const section=path.split("/")[1]||"dashboard";
+  return <header className="relative flex flex-wrap gap-3 items-center justify-between border-b border-neutral-800 bg-neutral-900 px-4 py-3">
+    <details key={path} className="md:hidden"><summary className="cursor-pointer px-2 py-1">Menu</summary><div className="absolute left-0 right-0 top-full z-40 border-b border-neutral-700 bg-neutral-900 p-4 max-h-[75vh] overflow-auto"><Navigation userRole={session?.user?.role}/></div></details>
+    <p className="capitalize font-medium">{section}</p>
+    <form className="hidden lg:flex flex-1 max-w-sm gap-2" onSubmit={e=>{e.preventDefault();router.push("/tickets?q="+encodeURIComponent(query));}}><label className="flex-1"><span className="sr-only">Search tickets</span><input className="field mt-0" maxLength={160} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search tickets"/></label><button className="text-sm">Search</button></form>
+    <div className="flex items-center gap-3"><NotificationBell/><span className="hidden sm:block text-sm text-neutral-300 max-w-40 truncate">{session?.user?.name}</span></div>
+  </header>;
 }

@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch and local temporary debug scripts
+/scratch/
+debug*.js
+debug*.ts
+query*.js
+test.js

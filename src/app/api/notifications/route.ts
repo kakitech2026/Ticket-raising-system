@@ -1,78 +1,24 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-
-export async function GET() {
+import { apiError, ApiError, readJson, requireUser } from "@/lib/api";
+import { ticketWhere } from "@/lib/policy";
+export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const notifications = await prisma.notification.findMany({
-      where: {
-        userId: session.user.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 20, // Get last 20 notifications
-    });
-
-    return NextResponse.json(notifications);
-  } catch (error) {
-    console.error("Error fetching notifications:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch notifications" },
-      { status: 500 }
-    );
-  }
+    const actor = await requireUser(), page = Math.max(1, Number(new URL(req.url).searchParams.get("page")) || 1);
+    const where = { userId: actor.id, OR: [{ ticketId: null }, { ticket: ticketWhere(actor) }] };
+    const [notifications, unreadCount] = await Promise.all([
+      prisma.notification.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * 20, take: 20 }),
+      prisma.notification.count({ where: { ...where, isRead: false } }),
+    ]);
+    return NextResponse.json({ notifications, unreadCount });
+  } catch (error) { return apiError(error); }
 }
-
 export async function PATCH(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id, markAll } = await req.json();
-
-    if (markAll) {
-      await prisma.notification.updateMany({
-        where: {
-          userId: session.user.id,
-          isRead: false,
-        },
-        data: {
-          isRead: true,
-        },
-      });
-      return NextResponse.json({ success: true });
-    }
-
-    if (!id) {
-      return NextResponse.json({ error: "Missing notification id" }, { status: 400 });
-    }
-
-    // Verify ownership and update
-    const notification = await prisma.notification.update({
-      where: {
-        id,
-        userId: session.user.id,
-      },
-      data: {
-        isRead: true,
-      },
-    });
-
-    return NextResponse.json(notification);
-  } catch (error) {
-    console.error("Error updating notification:", error);
-    return NextResponse.json(
-      { error: "Failed to update notification" },
-      { status: 500 }
-    );
-  }
+    const actor = await requireUser(), data = await readJson(req, z.object({ id: z.string().optional(), markAll: z.boolean().optional() }).strict());
+    if (!data.markAll && !data.id) throw new ApiError(400, "Select a notification");
+    await prisma.notification.updateMany({ where: { userId: actor.id, ...(data.markAll ? {} : { id: data.id }) }, data: { isRead: true } });
+    return NextResponse.json({ success: true });
+  } catch (error) { return apiError(error); }
 }

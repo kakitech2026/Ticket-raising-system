@@ -1,148 +1,590 @@
-import { prisma } from "@/lib/prisma";
+import Link from "next/link";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { Ticket as TicketIcon, CheckCircle2, Clock, AlertCircle, AlertTriangle } from "lucide-react";
-import { getSLAStatus, formatTimeRemaining } from "@/lib/sla";
-import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+import { activeStatuses, statusLabels, ticketWhere, projectWhere } from "@/lib/policy";
+import { getSLAStatus, formatTimeRemaining, formatDate } from "@/lib/sla";
+import {
+  Inbox,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  UserCheck,
+  FolderKanban,
+  PlusCircle,
+  Sparkles,
+  MessageSquare,
+} from "lucide-react";
+
+export const metadata = { title: "Dashboard | Tickety" };
+
+const priorityWeight: Record<string, number> = {
+  CRITICAL: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+};
+
+function sortTicketsByPriorityAndLatest<T extends { priority: string; createdAt: Date | string }>(tickets: T[]): T[] {
+  return [...tickets].sort((a, b) => {
+    const weightDiff = (priorityWeight[b.priority] ?? 0) - (priorityWeight[a.priority] ?? 0);
+    if (weightDiff !== 0) return weightDiff;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
+  if (!session?.user?.id) return null;
 
-  const role = session.user.role;
-  const userId = session.user.id;
+  const user = session.user;
+  const isTech = user.role === "TECH";
+  const isAdmin = user.role === "ADMIN";
+  const isEmployee = user.role === "EMPLOYEE";
 
-  let whereClause = {};
-  if (role === "EMPLOYEE") {
-    whereClause = { creatorId: userId };
-  } else if (role === "TECH") {
-    whereClause = {
-      OR: [
-        { creatorId: userId },
-        { assigneeId: userId },
-        { assigneeId: null }, // So they can claim unassigned tickets
-      ],
-    };
-  }
+  const baseWhere = ticketWhere(user);
 
-  const tickets = await prisma.ticket.findMany({
-    where: whereClause,
-    orderBy: { createdAt: "desc" },
-    include: {
-      creator: true,
-      assignee: true,
-    },
-    take: 10,
-  });
+  if (isTech) {
+    // Technician dashboard: prioritize assigned action items and unassigned pool
+    const [
+      awaitingMyReviewCount,
+      myInProgressCount,
+      unassignedPoolCount,
+      myResolvedCount,
+      rawAssignedActionTickets,
+      myActiveTickets,
+      rawUnassignedTickets,
+    ] = await Promise.all([
+      prisma.ticket.count({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: user.id, status: { in: ["NEEDS_APPROVAL", "IN_REVIEW", "RE_REVIEW"] } },
+          ],
+        },
+      }),
+      prisma.ticket.count({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: user.id, status: { in: ["ACCEPTED", "IN_PROGRESS"] } },
+          ],
+        },
+      }),
+      prisma.ticket.count({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: null, status: { in: activeStatuses } },
+          ],
+        },
+      }),
+      prisma.ticket.count({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: user.id, status: "COMPLETED" },
+          ],
+        },
+      }),
+      // Assigned tickets requiring technician action
+      prisma.ticket.findMany({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: user.id, status: { in: ["NEEDS_APPROVAL", "IN_REVIEW", "RE_REVIEW"] } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          department: true,
+          createdAt: true,
+          slaStartedAt: true,
+          slaDueAt: true,
+          creator: { select: { name: true, email: true } },
+          _count: { select: { comments: true } },
+        },
+      }),
+      // Other active tickets assigned to me
+      prisma.ticket.findMany({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: user.id, status: { in: ["ACCEPTED", "IN_PROGRESS"] } },
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          department: true,
+          dueDate: true,
+          createdAt: true,
+          slaStartedAt: true,
+          slaDueAt: true,
+          creator: { select: { name: true } },
+          _count: { select: { comments: true } },
+        },
+      }),
+      // Unassigned tickets waiting in queue
+      prisma.ticket.findMany({
+        where: {
+          AND: [
+            baseWhere,
+            { assigneeId: null, status: { in: activeStatuses } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          department: true,
+          createdAt: true,
+          slaDueAt: true,
+          _count: { select: { comments: true } },
+        },
+      }),
+    ]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "COMPLETED": return "bg-green-500/10 text-green-400 border-green-500/20";
-      case "IN_PROGRESS": return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-      case "NEEDS_APPROVAL": return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-      default: return "bg-neutral-800 text-neutral-300 border-neutral-700";
-    }
-  };
+    // Sort by Highest Priority first (CRITICAL -> HIGH -> MEDIUM -> LOW), then latest
+    const assignedActionTickets = sortTicketsByPriorityAndLatest(rawAssignedActionTickets);
+    const unassignedTickets = sortTicketsByPriorityAndLatest(rawUnassignedTickets);
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "CRITICAL": return "text-red-400";
-      case "HIGH": return "text-orange-400";
-      case "MEDIUM": return "text-yellow-400";
-      default: return "text-green-400";
-    }
-  };
-
-  const getSLAColor = (sla: string) => {
-    switch (sla) {
-      case "BREACHED": return "bg-red-500/10 text-red-400 border-red-500/20";
-      case "AT_RISK": return "bg-orange-500/10 text-orange-400 border-orange-500/20";
-      case "COMPLETED": return "bg-neutral-800 text-neutral-400 border-neutral-700";
-      default: return "bg-green-500/10 text-green-400 border-green-500/20";
-    }
-  };
-
-  const sortedTickets = [...tickets].sort((a, b) => {
-    const aSla = getSLAStatus(a.createdAt, a.priority, a.status === "COMPLETED");
-    const bSla = getSLAStatus(b.createdAt, b.priority, b.status === "COMPLETED");
-    const weight = { "BREACHED": 3, "AT_RISK": 2, "ON_TRACK": 1, "COMPLETED": 0 };
-    return weight[bSla] - weight[aSla];
-  });
-
-  return (
-    <div className="space-y-6">
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[
-          { label: "Total Tickets", value: tickets.length, icon: TicketIcon, color: "text-indigo-400" },
-          { label: "In Progress", value: tickets.filter(t => t.status === "IN_PROGRESS").length, icon: Clock, color: "text-blue-400" },
-          { label: "Needs Approval", value: tickets.filter(t => t.status === "NEEDS_APPROVAL").length, icon: AlertCircle, color: "text-yellow-400" },
-        ].map((metric) => (
-          <div key={metric.label} className="bg-neutral-900/50 backdrop-blur-md border border-neutral-800 p-6 rounded-2xl flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-neutral-400">{metric.label}</p>
-              <p className="text-3xl font-bold text-neutral-100 mt-1">{metric.value}</p>
-            </div>
-            <div className={`p-3 rounded-xl bg-neutral-800/50 ${metric.color}`}>
-              <metric.icon className="w-6 h-6" />
-            </div>
+    return (
+      <div className="space-y-8">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Technician Workspace
+            </h1>
+            <p className="text-sm text-neutral-400 mt-1">
+              Welcome back, <span className="text-neutral-200 font-medium">{user.name}</span>. Sorted by highest priority and latest requests.
+            </p>
           </div>
-        ))}
-      </div>
-
-      {/* Tickets List */}
-      <div className="bg-neutral-900/50 backdrop-blur-md border border-neutral-800 rounded-2xl overflow-hidden">
-        <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-neutral-100">Recent Tickets</h2>
-          <Link href="/tickets/new" className="text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
-            Create Ticket &rarr;
-          </Link>
+          <div className="flex gap-3">
+            <Link href="/tickets?queue=unassigned" className="btn bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700">
+              <Inbox className="w-4 h-4 mr-2" /> Unassigned Queue ({unassignedPoolCount})
+            </Link>
+            <Link href="/tickets/new" className="btn bg-indigo-600 hover:bg-indigo-500">
+              <PlusCircle className="w-4 h-4 mr-2" /> New Ticket
+            </Link>
+          </div>
         </div>
-        
-        {tickets.length === 0 ? (
-          <div className="p-8 text-center text-neutral-500">
-            No tickets found. Create your first ticket!
-          </div>
-        ) : (
-          <div className="divide-y divide-neutral-800">
-            {sortedTickets.map((ticket) => {
-              const slaStatus = getSLAStatus(ticket.createdAt, ticket.priority, ticket.status === "COMPLETED");
-              const isResolved = ticket.status === "COMPLETED";
 
-              return (
-                <Link key={ticket.id} href={`/tickets/${ticket.id}`} className="block p-6 hover:bg-neutral-800/30 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-neutral-200 font-medium">{ticket.title}</h3>
-                    <p className="text-sm text-neutral-500 line-clamp-1">{ticket.description}</p>
-                  </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${getStatusColor(ticket.status)}`}>
-                          {ticket.status.replace("_", " ")}
+        {/* Action KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link
+            href="/tickets"
+            className={`panel transition hover:border-amber-500/50 relative overflow-hidden ${
+              awaitingMyReviewCount > 0 ? "border-amber-500/40 bg-gradient-to-br from-amber-950/20 to-neutral-900" : ""
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-neutral-400">Needs Your Review</span>
+              <span className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+                <AlertTriangle className="w-5 h-5" />
+              </span>
+            </div>
+            <div className="mt-3 flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white">{awaitingMyReviewCount}</span>
+              {awaitingMyReviewCount > 0 && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
+                  Action Required
+                </span>
+              )}
+            </div>
+          </Link>
+
+          <Link href="/tickets" className="panel transition hover:border-indigo-500/50">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-neutral-400">In Progress (Active)</span>
+              <span className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                <Clock className="w-5 h-5" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-bold text-white">{myInProgressCount}</span>
+            </div>
+          </Link>
+
+          <Link href="/tickets?queue=unassigned" className="panel transition hover:border-neutral-600">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-neutral-400">Unassigned Pool</span>
+              <span className="p-2 rounded-lg bg-neutral-800 text-neutral-400">
+                <Inbox className="w-5 h-5" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-bold text-white">{unassignedPoolCount}</span>
+            </div>
+          </Link>
+
+          <div className="panel">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-neutral-400">Resolved by You</span>
+              <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="w-5 h-5" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-bold text-white">{myResolvedCount}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Assigned to You — Awaiting Review Section (Prominently Highlighted) */}
+        <section className="panel space-y-4 border-amber-900/30">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-white">Assigned to You — Needs Attention</h2>
+                {assignedActionTickets.length > 0 && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                    {assignedActionTickets.length} Pending
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Tickets assigned to you sorted by highest priority, then most recent.
+              </p>
+            </div>
+            <Link href="/tickets" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 inline-flex items-center">
+              View all tickets <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Link>
+          </div>
+
+          {assignedActionTickets.length === 0 ? (
+            <div className="py-8 text-center text-neutral-400 space-y-2">
+              <Sparkles className="w-8 h-8 text-emerald-400 mx-auto opacity-70" />
+              <p className="font-medium text-neutral-300">You are all caught up!</p>
+              <p className="text-xs">No pending tickets currently waiting for your review.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-neutral-800/80">
+              {assignedActionTickets.map((t) => (
+                <Link
+                  key={t.id}
+                  href={`/tickets/${t.id}`}
+                  className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 px-2 rounded-lg transition hover:bg-neutral-800/50"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-neutral-100 group-hover:text-indigo-400 transition break-words">
+                        {t.title}
+                      </span>
+                      <PriorityBadge priority={t.priority} />
+                      <StatusBadge status={t.status} />
+                      {t._count.comments > 0 && (
+                        <span
+                          title={`${t._count.comments} comment${t._count.comments > 1 ? "s" : ""}`}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-800/60"
+                        >
+                          <MessageSquare className="w-3 h-3 text-indigo-400" />
+                          <span>{t._count.comments}</span>
                         </span>
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1 ${getSLAColor(slaStatus)}`}>
-                          {slaStatus === "BREACHED" && <AlertTriangle className="w-3 h-3" />}
-                          SLA: {slaStatus.replace("_", " ")}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-sm">
-                        <span className={`${getPriorityColor(ticket.priority)} font-medium`}>{ticket.priority}</span>
-                        {!isResolved && (
-                           <span className={slaStatus === "BREACHED" ? "text-red-400 font-medium" : "text-neutral-500"}>
-                             {formatTimeRemaining(ticket.dueDate || ticket.createdAt)}
-                           </span>
-                        )}
-                        <span className="text-neutral-600">{new Date(ticket.createdAt).toLocaleDateString()}</span>
-                      </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+                      <span>By <strong className="text-neutral-300">{t.creator.name}</strong> ({t.department})</span>
+                      <span suppressHydrationWarning>Created {formatDate(t.createdAt)}</span>
+                      <span className="text-neutral-500">•</span>
+                      <span className="text-amber-400 font-medium">SLA: {formatTimeRemaining(t.slaDueAt)}</span>
                     </div>
                   </div>
+                  <div className="shrink-0 flex items-center">
+                    <span className="btn bg-indigo-600/90 group-hover:bg-indigo-600 text-xs py-1.5 px-3">
+                      Review Ticket
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* In Progress & Unassigned Queue Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Active Work in Progress */}
+          <section className="panel space-y-3">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+              <h2 className="text-base font-semibold text-white">Your In-Progress Work</h2>
+              <Link href="/tickets" className="text-xs text-indigo-400 hover:underline">
+                View all
               </Link>
-            );
-          })}
+            </div>
+            {myActiveTickets.length === 0 ? (
+              <p className="text-xs text-neutral-400 py-4">No active in-progress tickets.</p>
+            ) : (
+              <div className="divide-y divide-neutral-800/60">
+                {myActiveTickets.map((t) => (
+                  <Link
+                    key={t.id}
+                    href={`/tickets/${t.id}`}
+                    className="block py-2.5 px-2 rounded transition hover:bg-neutral-800/40"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 truncate">
+                        <p className="text-sm font-medium text-neutral-200 truncate">{t.title}</p>
+                        {t._count.comments > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 bg-indigo-950/60 px-1.5 py-0.2 rounded border border-indigo-800/40">
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            {t._count.comments}
+                          </span>
+                        )}
+                      </div>
+                      <StatusBadge status={t.status} />
+                    </div>
+                    <p className="text-xs text-neutral-400 mt-1">
+                      {t.department} • Est: {t.dueDate ? formatDate(t.dueDate) : "No estimate set"}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Unassigned Queue */}
+          <section className="panel space-y-3">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+              <h2 className="text-base font-semibold text-white">Unassigned Pool</h2>
+              <Link href="/tickets?queue=unassigned" className="text-xs text-indigo-400 hover:underline">
+                Claim tickets ({unassignedPoolCount})
+              </Link>
+            </div>
+            {unassignedTickets.length === 0 ? (
+              <p className="text-xs text-neutral-400 py-4">No unassigned tickets in the pool.</p>
+            ) : (
+              <div className="divide-y divide-neutral-800/60">
+                {unassignedTickets.map((t) => (
+                  <Link
+                    key={t.id}
+                    href={`/tickets/${t.id}`}
+                    className="block py-2.5 px-2 rounded transition hover:bg-neutral-800/40"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 truncate">
+                        <p className="text-sm font-medium text-neutral-200 truncate">{t.title}</p>
+                        {t._count.comments > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 bg-indigo-950/60 px-1.5 py-0.2 rounded border border-indigo-800/40">
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            {t._count.comments}
+                          </span>
+                        )}
+                      </div>
+                      <PriorityBadge priority={t.priority} />
+                    </div>
+                    <p className="text-xs text-neutral-400 mt-1">
+                      {t.department} • SLA Due: {formatTimeRemaining(t.slaDueAt)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  // Employee or Admin Dashboard
+  const [total, inProgress, awaitingReview, rawRecentTickets] = await Promise.all([
+    prisma.ticket.count({ where: baseWhere }),
+    prisma.ticket.count({
+      where: { AND: [baseWhere, { status: { in: ["IN_PROGRESS", "ACCEPTED"] } }] },
+    }),
+    prisma.ticket.count({
+      where: { AND: [baseWhere, { status: { in: ["NEEDS_APPROVAL", "IN_REVIEW", "RE_REVIEW"] } }] },
+    }),
+    prisma.ticket.findMany({
+      where: { AND: [baseWhere, { status: { in: activeStatuses } }] },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        department: true,
+        createdAt: true,
+        slaStartedAt: true,
+        slaDueAt: true,
+        assignee: { select: { name: true } },
+        _count: { select: { comments: true } },
+      },
+    }),
+  ]);
+
+  const recentTickets = sortTicketsByPriorityAndLatest(rawRecentTickets).slice(0, 10);
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            {isAdmin ? "Admin Overview" : "Your Support Dashboard"}
+          </h1>
+          <p className="text-sm text-neutral-400 mt-1">
+            Welcome back, <span className="text-neutral-200 font-medium">{user.name}</span>. Track and manage your requests.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Link href="/tickets/new" className="btn bg-indigo-600 hover:bg-indigo-500">
+            <PlusCircle className="w-4 h-4 mr-2" /> Create Ticket
+          </Link>
+        </div>
+      </div>
+
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Link href="/tickets" className="panel transition hover:border-neutral-700">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-neutral-400">Total Active Tickets</span>
+            <span className="p-2 rounded-lg bg-neutral-800 text-neutral-300">
+              <FolderKanban className="w-5 h-5" />
+            </span>
+          </div>
+          <p className="text-3xl font-bold text-white mt-3">{total}</p>
+        </Link>
+
+        <Link href="/tickets" className="panel transition hover:border-amber-500/40">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-neutral-400">Awaiting Review</span>
+            <span className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+              <AlertTriangle className="w-5 h-5" />
+            </span>
+          </div>
+          <p className="text-3xl font-bold text-white mt-3">{awaitingReview}</p>
+        </Link>
+
+        <Link href="/tickets" className="panel transition hover:border-indigo-500/40">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-neutral-400">In Progress</span>
+            <span className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+              <Clock className="w-5 h-5" />
+            </span>
+          </div>
+          <p className="text-3xl font-bold text-white mt-3">{inProgress}</p>
+        </Link>
+      </div>
+
+      {/* Recent Tickets Section (Highest Priority First, Then Latest) */}
+      <section className="panel space-y-4">
+        <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">
+              {isEmployee ? "Your Recent Tickets" : "Recent Active Tickets"}
+            </h2>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              Live status and updates on your submitted requests (highest priority first).
+            </p>
+          </div>
+          <Link href="/tickets" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 inline-flex items-center">
+            View all <ArrowRight className="w-3.5 h-3.5 ml-1" />
+          </Link>
+        </div>
+
+        {recentTickets.length === 0 ? (
+          <div className="py-8 text-center text-neutral-400 space-y-3">
+            <Inbox className="w-8 h-8 text-neutral-600 mx-auto" />
+            <p className="font-medium text-neutral-300">No active tickets found</p>
+            <Link href="/tickets/new" className="btn text-xs py-1.5 px-3">
+              Create your first ticket
+            </Link>
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-800/80">
+            {recentTickets.map((t) => (
+              <Link
+                key={t.id}
+                href={`/tickets/${t.id}`}
+                className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 px-2 rounded-lg transition hover:bg-neutral-800/50"
+              >
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-neutral-100 group-hover:text-indigo-400 transition break-words">
+                      {t.title}
+                    </span>
+                    <PriorityBadge priority={t.priority} />
+                    <StatusBadge status={t.status} />
+                    {t._count.comments > 0 && (
+                      <span
+                        title={`${t._count.comments} comment${t._count.comments > 1 ? "s" : ""}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-800/60"
+                      >
+                        <MessageSquare className="w-3 h-3 text-indigo-400" />
+                        <span>{t._count.comments}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+                    <span>Department: <strong className="text-neutral-300">{t.department}</strong></span>
+                    <span>Assigned: <strong className="text-neutral-300">{t.assignee?.name ?? "Unassigned"}</strong></span>
+                    <span suppressHydrationWarning>Created {formatDate(t.createdAt)}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 flex items-center text-xs text-neutral-400">
+                  <span>SLA: {formatTimeRemaining(t.slaDueAt)}</span>
+                  <ArrowRight className="w-4 h-4 ml-2 text-neutral-500 group-hover:text-neutral-200 transition" />
+                </div>
+              </Link>
+            ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const styles: Record<string, string> = {
+    CRITICAL: "bg-red-950/70 text-red-400 border-red-800/80",
+    HIGH: "bg-orange-950/70 text-orange-400 border-orange-800/80",
+    MEDIUM: "bg-blue-950/70 text-blue-400 border-blue-800/80",
+    LOW: "bg-neutral-800 text-neutral-400 border-neutral-700",
+  };
+  return (
+    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border uppercase tracking-wider ${styles[priority] ?? styles.LOW}`}>
+      {priority}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    NEEDS_APPROVAL: "bg-amber-950/70 text-amber-300 border-amber-800/80",
+    IN_REVIEW: "bg-purple-950/70 text-purple-300 border-purple-800/80",
+    RE_REVIEW: "bg-pink-950/70 text-pink-300 border-pink-800/80",
+    ACCEPTED: "bg-indigo-950/70 text-indigo-300 border-indigo-800/80",
+    IN_PROGRESS: "bg-cyan-950/70 text-cyan-300 border-cyan-800/80",
+    COMPLETED: "bg-emerald-950/70 text-emerald-300 border-emerald-800/80",
+    REJECTED: "bg-rose-950/70 text-rose-400 border-rose-800/80",
+  };
+  const labels: Record<string, string> = {
+    NEEDS_APPROVAL: "Awaiting Review",
+    IN_REVIEW: "In Review",
+    RE_REVIEW: "Re-Review",
+    ACCEPTED: "Accepted",
+    IN_PROGRESS: "In Progress",
+    COMPLETED: "Completed",
+    REJECTED: "Rejected",
+  };
+  return (
+    <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${styles[status] ?? "bg-neutral-800 text-neutral-300 border-neutral-700"}`}>
+      {labels[status] ?? status}
+    </span>
   );
 }

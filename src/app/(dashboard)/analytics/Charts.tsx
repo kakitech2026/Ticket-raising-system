@@ -11,9 +11,9 @@ export function AnalyticsCharts({
   ticketsByDepartment, 
   techPerformance 
 }: { 
-  ticketsOverTime: any[], 
-  ticketsByDepartment: any[], 
-  techPerformance: any[] 
+  ticketsOverTime: { date: string; created: number; resolved: number }[], 
+  ticketsByDepartment: { name: string; value: number }[], 
+  techPerformance: { name: string; resolved: number }[] 
 }) {
   const COLORS = ['#818cf8', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#60a5fa'];
 

@@ -1,266 +1,31 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Image as ImageIcon, X } from "lucide-react";
 import Link from "next/link";
-
+import { requestJson, jsonOptions, errorMessage } from "@/lib/client-api";
+import { readImages } from "@/lib/client-images";
+type Choice = { id: string; name: string };
 export default function CreateTicketPage() {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("MEDIUM");
-  const [department, setDepartment] = useState("IT");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [images, setImages] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [staffUsers, setStaffUsers] = useState<any[]>([]);
-  const [suggestedArticles, setSuggestedArticles] = useState<any[]>([]);
-  const router = useRouter();
-
-  // Debounced search for KB deflection
-  useEffect(() => {
-    if (title.trim().length < 3) {
-      setSuggestedArticles([]);
-      return;
-    }
-    const delayDebounceFn = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/kb/search?q=${encodeURIComponent(title)}`);
-        if (res.ok) {
-          const data = await res.json();
-          setSuggestedArticles(data.articles || []);
-        }
-      } catch (e) {}
-    }, 500);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [title]);
-
-  useEffect(() => {
-    fetch("/api/users")
-      .then(res => res.json())
-      .then(data => setStaffUsers(Array.isArray(data) ? data : []))
-      .catch(console.error);
-  }, []);
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") {
-          setImages((prev) => [...prev, reader.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/tickets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, priority, department, images, assigneeId: assigneeId || undefined }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to create ticket");
-      }
-
-      router.push("/");
-      router.refresh(); // Refresh server components
-    } catch (err: any) {
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-3xl mx-auto">
-      <div className="mb-6">
-        <Link href="/" className="inline-flex items-center text-sm font-medium text-neutral-400 hover:text-neutral-200 transition-colors">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Link>
-        <h1 className="text-2xl font-bold text-neutral-100 mt-4">Create New Ticket</h1>
-        <p className="text-neutral-400 mt-1">Please fill in the details below to raise a new ticket.</p>
-      </div>
-
-      <div className="bg-neutral-900/50 backdrop-blur-md border border-neutral-800 rounded-2xl p-6 md:p-8">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-4 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-neutral-300 mb-1.5">
-              Title
-            </label>
-            <input
-              id="title"
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="E.g. Unable to connect to VPN"
-              className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all"
-            />
-            
-            {suggestedArticles.length > 0 && (
-              <div className="mt-3 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-indigo-400 font-medium text-sm flex items-center">
-                    💡 Suggested Solutions
-                  </span>
-                  <span className="text-xs text-neutral-400">These might solve your problem without needing a ticket!</span>
-                </div>
-                <div className="space-y-2">
-                  {suggestedArticles.map((article) => (
-                    <Link key={article.id} href={`/kb/${article.id}`} target="_blank" className="block p-3 bg-neutral-900/80 border border-neutral-700 hover:border-indigo-500/50 rounded-lg transition-colors">
-                      <h4 className="text-neutral-200 text-sm font-medium">{article.title}</h4>
-                      <p className="text-neutral-500 text-xs line-clamp-1 mt-0.5">{article.content}</p>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-              <div>
-                <label htmlFor="priority" className="block text-sm font-medium text-neutral-300 mb-1.5">
-                  Priority
-                </label>
-                <select
-                  id="priority"
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm text-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all"
-                >
-                  <option value="LOW">Low - No immediate action needed</option>
-                  <option value="MEDIUM">Medium - Normal queue</option>
-                  <option value="HIGH">High - Urgent attention required</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="department" className="block text-sm font-medium text-neutral-300 mb-1.5">
-                  Department
-                </label>
-                <select
-                  id="department"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm text-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all"
-                >
-                  <option value="IT">IT Support</option>
-                  <option value="HR">Human Resources</option>
-                  <option value="FACILITIES">Facilities</option>
-                  <option value="FINANCE">Finance</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="assignee" className="block text-sm font-medium text-neutral-300 mb-1.5">
-                  Assign To
-                </label>
-                <select
-                  id="assignee"
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                  className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm text-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all"
-                >
-                  <option value="">Unassigned</option>
-                  {staffUsers.map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} ({user.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <label htmlFor="description" className="block text-sm font-medium text-neutral-300 mb-1.5 mt-6">
-              Description
-            </label>
-            <textarea
-              id="description"
-              required
-              rows={5}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Please provide detailed steps to reproduce or explain the issue..."
-              className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-neutral-300 mb-1.5">
-              Attachments (Screenshots)
-            </label>
-            <div className="mt-1 flex items-center gap-4">
-              <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg hover:bg-neutral-700 transition-colors">
-                <ImageIcon className="w-5 h-5 mr-2 text-neutral-400" />
-                <span className="text-sm font-medium text-neutral-300">Upload Images</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImageUpload}
-                />
-              </label>
-            </div>
-            
-            {images.length > 0 && (
-              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {images.map((img, index) => (
-                  <div key={index} className="relative group rounded-lg overflow-hidden border border-neutral-700">
-                    <img src={img} alt="preview" className="w-full h-24 object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(index)}
-                      className="absolute top-1 right-1 p-1 bg-neutral-900/80 rounded-full text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="pt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="px-6 py-2.5 mr-4 text-sm font-medium text-neutral-300 hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex justify-center items-center px-6 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-neutral-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              ) : null}
-              Submit Ticket
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
+  const router = useRouter(), requestKey = useRef<string | null>(null);
+  const [title, setTitle] = useState(""), [description, setDescription] = useState(""), [priority, setPriority] = useState("MEDIUM"), [department, setDepartment] = useState("IT"), [assigneeId, setAssignee] = useState(""), [projectId, setProject] = useState("");
+  const [staff, setStaff] = useState<Choice[]>([]), [projects, setProjects] = useState<Choice[]>([]), [images, setImages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false), [uploading, setUploading] = useState(false), [error, setError] = useState("");
+  useEffect(() => { let active = true; Promise.all([requestJson<Choice[]>("/api/users"), requestJson<Choice[]>("/api/projects")]).then(([s,p]) => { if(active) { setStaff(s); setProjects(p); } }).catch(e => { if(active) setError(errorMessage(e)); }); return () => { active = false; }; }, []);
+  return <div className="max-w-3xl mx-auto space-y-6"><Link href="/tickets" className="text-indigo-400">? Tickets</Link><h1 className="text-2xl font-semibold">Create ticket</h1>
+    <form className="panel space-y-5" onChange={() => { if (!loading) requestKey.current = null; }} onSubmit={async e => {
+      e.preventDefault(); setLoading(true); setError(""); requestKey.current ??= crypto.randomUUID();
+      try { const result = await requestJson<{ id: string }>("/api/tickets", jsonOptions("POST", { title, description, priority, department, assigneeId: assigneeId || undefined, projectId: projectId || undefined, images, requestKey: requestKey.current })); router.push("/tickets/" + result.id); router.refresh(); }
+      catch(e) { setError(errorMessage(e)); } finally { setLoading(false); }
+    }}>
+      {error && <p role="alert" className="text-red-400">{error}</p>}
+      <label className="block">Title<input className="field" required maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label>
+      <label className="block">Description<textarea className="field" required maxLength={20000} rows={5} value={description} onChange={e => setDescription(e.target.value)} /></label>
+      <div className="grid sm:grid-cols-2 gap-4"><label>Priority<select className="field" value={priority} onChange={e => setPriority(e.target.value)}>{["LOW","MEDIUM","HIGH","CRITICAL"].map(p => <option key={p}>{p}</option>)}</select></label><label>Department<select className="field" value={department} onChange={e => setDepartment(e.target.value)}>{["IT","HR","FACILITIES","FINANCE"].map(d => <option key={d}>{d}</option>)}</select></label></div>
+      <label className="block">Reviewing technician<select className="field" value={assigneeId} onChange={e => setAssignee(e.target.value)}><option value="">Unassigned queue</option>{staff.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select><span className="text-sm text-neutral-400">Your selected technician reviews this directly.</span></label>
+      <label className="block">Project<select className="field" value={projectId} onChange={e => setProject(e.target.value)}><option value="">No project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><span className="text-sm text-neutral-400">The selected technician must also have access to the project.</span></label>
+      <label className="block">Screenshots (PNG, JPEG or WebP; three files, 1 MB each)<input className="field" type="file" multiple accept="image/png,image/jpeg,image/webp" disabled={uploading || loading} onChange={async e => { const files=Array.from(e.target.files || []); e.target.value=""; setUploading(true); try { const next=await readImages(files,images.length); setImages(prev=>[...prev,...next]); } catch(e) { setError(errorMessage(e)); } finally { setUploading(false); } }} /></label>
+      {images.map((_,i)=><div key={i} className="flex justify-between"><span>Screenshot {i+1}</span><button type="button" onClick={()=>setImages(prev=>prev.filter((_,j)=>j!==i))}>Remove</button></div>)}
+      <button className="btn" disabled={loading || uploading}>{loading ? "Submitting?" : "Submit ticket"}</button>
+    </form>
+  </div>;
 }

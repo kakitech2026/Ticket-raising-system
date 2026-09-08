@@ -1,119 +1,13 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft } from "lucide-react";
-import Link from "next/link";
-
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-
-function CreateArticleForm() {
-  const searchParams = useSearchParams();
-  const initialTitle = searchParams.get("title") || "";
-  const initialContent = searchParams.get("content") || "";
-
-  const [title, setTitle] = useState(initialTitle);
-  const [content, setContent] = useState(initialContent);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const router = useRouter();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/kb", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to create article");
-      }
-
-      router.push("/kb");
-      router.refresh();
-    } catch (err: any) {
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <Link href="/kb" className="inline-flex items-center text-sm font-medium text-neutral-400 hover:text-neutral-200 transition-colors">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Knowledge Base
-        </Link>
-        <h1 className="text-2xl font-bold text-neutral-100 mt-4">Draft New Article</h1>
-      </div>
-
-      <div className="bg-neutral-900/50 backdrop-blur-md border border-neutral-800 rounded-2xl p-6 md:p-8">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-4 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-neutral-300 mb-1.5">Article Title</label>
-            <input
-              id="title"
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. How to connect to the office VPN"
-              className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="content" className="block text-sm font-medium text-neutral-300 mb-1.5">Content (Markdown supported)</label>
-            <textarea
-              id="content"
-              required
-              rows={15}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write the step-by-step instructions here..."
-              className="appearance-none block w-full px-4 py-2.5 border border-neutral-700 bg-neutral-800/50 rounded-lg shadow-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
-            />
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="px-6 py-2.5 mr-4 text-sm font-medium text-neutral-300 hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex justify-center items-center px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-              Publish Article
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export default function CreateArticlePage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <CreateArticleForm />
-    </Suspense>
-  );
+import { notFound } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { ticketWhere } from "@/lib/policy";
+import { ArticleEditor } from "@/components/ArticleEditor";
+export default async function CreateArticle({searchParams}:{searchParams:Promise<{ticketId?:string}>}){
+  const session=await getServerSession(authOptions);if(!session?.user?.id||session.user.role==="EMPLOYEE")return notFound();
+  const {ticketId}=await searchParams;
+  const ticket=ticketId?await prisma.ticket.findFirst({where:{AND:[{id:ticketId,status:"COMPLETED"},ticketWhere(session.user)]},select:{id:true,title:true,resolutionSummary:true,assigneeId:true}}):null;
+  if(ticketId&&!ticket)return notFound();
+  return <div className="max-w-3xl mx-auto space-y-6"><h1 className="text-2xl font-semibold">Draft restricted article</h1><ArticleEditor sourceTicketId={ticket?.id} initialTitle={ticket?.title} initialContent={ticket?.resolutionSummary??""} canAssign={session.user.role==="ADMIN"} initialAssigneeId={ticket?.assigneeId??session.user.id}/></div>;
 }

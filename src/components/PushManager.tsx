@@ -1,126 +1,54 @@
 "use client";
-
-import { useState, useEffect } from "react";
-import { Bell, BellOff, BellRing } from "lucide-react";
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-
-function urlB64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
-export function PushManager() {
-  const [isSupported, setIsSupported] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if ("serviceWorker" in navigator && "PushManager" in window) {
-      setIsSupported(true);
-      checkSubscription();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const checkSubscription = async () => {
-    try {
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      const subscription = await registration.pushManager.getSubscription();
-      setIsSubscribed(!!subscription);
-    } catch (error) {
-      console.error("Error checking push subscription:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const subscribeUser = async () => {
-    setLoading(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY || ""),
-      });
-
-      await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(subscription),
-      });
-
-      setIsSubscribed(true);
-    } catch (error) {
-      console.error("Failed to subscribe user:", error);
-      alert("Failed to enable notifications. Please check browser permissions.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const unsubscribeUser = async () => {
-    setLoading(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      
-      if (subscription) {
-        await fetch("/api/push/subscribe", {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
-        });
-        
-        await subscription.unsubscribe();
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { useSession } from "next-auth/react";
+import { requestJson,jsonOptions,errorMessage } from "@/lib/client-api";
+type PushState={enabled:boolean;ready:boolean;busy:boolean;error:string;available:boolean;toggle:()=>Promise<void>;detach:()=>Promise<void>};
+const Context=createContext<PushState|null>(null);
+function keyBytes(value:string){const text=atob(value.replaceAll("-","+").replaceAll("_","/"));return Uint8Array.from(text,c=>c.charCodeAt(0));}
+export function PushProvider({children}:{children:ReactNode}){
+  const {data:session,status}=useSession();
+  const [enabled,setEnabled]=useState(false),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const available=!!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  useEffect(()=>{
+    if(status==="loading")return;
+    let active=true;
+    void Promise.resolve().then(async()=>{
+      if(!("serviceWorker" in navigator)||!("PushManager" in window)){if(active)setReady(false);return;}
+      const registration=await navigator.serviceWorker.register("/sw.js");
+      const subscription=await registration.pushManager.getSubscription();
+      if(!active)return;
+      if(subscription){
+        if(session?.user?.id)await requestJson("/api/push/subscribe",jsonOptions("POST",subscription.toJSON()));
+        else await subscription.unsubscribe();
       }
-
-      setIsSubscribed(false);
-    } catch (error) {
-      console.error("Failed to unsubscribe user:", error);
-    } finally {
-      setLoading(false);
+      if(active){setEnabled(!!subscription&&!!session?.user?.id);setReady(true);}
+    }).catch(e=>{if(active)setError(errorMessage(e));});
+    return()=>{active=false;};
+  },[session?.user?.id,status]);
+  const detach=useCallback(async()=>{
+    if(!("serviceWorker" in navigator))return;
+    const registration=await navigator.serviceWorker.getRegistration("/sw.js");
+    const subscription=await registration?.pushManager.getSubscription();
+    if(subscription){
+      // Invalidate the browser endpoint even if the server is temporarily unavailable.
+      await subscription.unsubscribe();
+      if(session?.user?.id)await requestJson("/api/push/subscribe",jsonOptions("DELETE",{endpoint:subscription.endpoint}));
     }
-  };
-
-  if (!isSupported) return null;
-
-  return (
-    <button
-      onClick={isSubscribed ? unsubscribeUser : subscribeUser}
-      disabled={loading}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-        isSubscribed 
-          ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" 
-          : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
-      }`}
-      title={isSubscribed ? "Disable Desktop Notifications" : "Enable Desktop Notifications"}
-    >
-      {loading ? (
-        <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-      ) : isSubscribed ? (
-        <>
-          <BellRing className="w-4 h-4" />
-          <span className="hidden sm:inline">Push Enabled</span>
-        </>
-      ) : (
-        <>
-          <BellOff className="w-4 h-4" />
-          <span className="hidden sm:inline">Enable Push</span>
-        </>
-      )}
-    </button>
-  );
+    setEnabled(false);
+  },[session?.user?.id]);
+  async function toggle(){
+    setBusy(true);setError("");
+    try{
+      if(enabled){await detach();return;}
+      const registration=await navigator.serviceWorker.ready;
+      const sub=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!)});
+      try{await requestJson("/api/push/subscribe",jsonOptions("POST",sub.toJSON()));setEnabled(true);}catch(e){await sub.unsubscribe();throw e;}
+    }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
+  }
+  return <Context.Provider value={{enabled,ready,busy,error,available,toggle,detach}}>{children}</Context.Provider>;
+}
+export function usePush(){const value=useContext(Context);if(!value)throw new Error("PushProvider missing");return value;}
+export function PushManager(){
+  const state=usePush();
+  return <div><button className="text-sm text-indigo-300" disabled={!state.ready||!state.available||state.busy} onClick={state.toggle}>{!state.available?"Push unavailable":state.busy?"Updating?":state.enabled?"Disable push":"Enable push"}</button>{state.error&&<p role="alert" className="text-red-400 text-xs max-w-64">{state.error}</p>}</div>;
 }

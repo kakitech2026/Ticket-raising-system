@@ -6,8 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "postinstall": "prisma generate"
+    "lint": "eslint src tests scripts next.config.ts prisma.config.ts",
+    "postinstall": "prisma generate",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:integration": "node --import tsx scripts/test-integration.ts",
+    "db:deploy": "tsx scripts/deploy-migrations.ts",
+    "format": "prettier --write src tests scripts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -22,8 +27,11 @@
     "prisma": "^7.9.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.10.1",
-    "web-push": "^3.6.7"
+    "remark-gfm": "^4.0.1",
+    "web-push": "^3.6.7",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -34,7 +42,9 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }
