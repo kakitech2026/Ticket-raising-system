@@ -176,7 +176,15 @@ export default function ResetPassword() {
             <button className="btn w-full bg-indigo-600 hover:bg-indigo-500" disabled={busy}>
               {busy ? "Sending link..." : "Send Reset Link"}
             </button>
-            <div className="text-center pt-2">
+
+            <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3.5 text-xs text-neutral-400 space-y-1">
+              <p className="font-semibold text-neutral-200">Staff &amp; Employee Notice:</p>
+              <p>
+                If you do not receive an automated email, contact your <strong>System Administrator</strong> to generate an instant one-time reset link from the User Management panel.
+              </p>
+            </div>
+
+            <div className="text-center pt-1">
               <Link
                 href="/login"
                 className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-200"

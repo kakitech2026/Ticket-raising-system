@@ -4,12 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { errorMessage } from "@/lib/client-api";
-import { LogIn } from "lucide-react";
+import { LogIn, ShieldAlert, X, Mail } from "lucide-react";
 
 export default function Login() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center px-4 py-16">
@@ -76,12 +77,13 @@ export default function Login() {
           <label className="block">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-neutral-300">Password</span>
-              <Link
-                href="/reset-password"
+              <button
+                type="button"
+                onClick={() => setShowHelp(true)}
                 className="text-xs text-indigo-400 hover:text-indigo-300"
               >
-                Forgot password?
-              </Link>
+                Forgot password? Contact Admin
+              </button>
             </div>
             <input
               className="field mt-1"
@@ -111,6 +113,58 @@ export default function Login() {
           </p>
         </div>
       </div>
+
+      {/* Forgot Password Guidance Modal */}
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2 text-indigo-400 font-semibold">
+                <ShieldAlert className="w-5 h-5" />
+                <span>Password Reset Help</span>
+              </div>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm text-neutral-300 leading-relaxed">
+              <p>
+                <strong>For Employees &amp; Staff:</strong>
+                <br />
+                Please reach out directly to your <strong>System Administrator</strong> to generate a secure, one-time password reset link for your account.
+              </p>
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-xs text-neutral-400 space-y-1">
+                <p className="font-medium text-neutral-200">How Admins create your link:</p>
+                <p>1. Admin logs into Tickety.</p>
+                <p>2. Goes to <strong>User Management</strong> (`/users`).</p>
+                <p>3. Clicks <strong>Reset Password</strong> next to your name and gives you the link.</p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2 border-t border-neutral-800">
+              <Link
+                href="/reset-password"
+                onClick={() => setShowHelp(false)}
+                className="btn bg-neutral-800 hover:bg-neutral-700 text-xs text-center inline-flex items-center justify-center gap-1.5 py-2"
+              >
+                <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                Or try Automated Email Reset &rarr;
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowHelp(false)}
+                className="btn bg-indigo-600 hover:bg-indigo-500 text-xs py-2"
+              >
+                Got it, close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
