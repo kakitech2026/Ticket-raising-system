@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { errorMessage } from "@/lib/client-api";
-import { LogIn, ShieldAlert, X, Mail } from "lucide-react";
+import { LogIn, ShieldAlert, X } from "lucide-react";
 
 export default function Login() {
   const router = useRouter();
@@ -146,18 +146,10 @@ export default function Login() {
             </div>
 
             <div className="pt-2 flex flex-col gap-2 border-t border-neutral-800">
-              <Link
-                href="/reset-password"
-                onClick={() => setShowHelp(false)}
-                className="btn bg-neutral-800 hover:bg-neutral-700 text-xs text-center inline-flex items-center justify-center gap-1.5 py-2"
-              >
-                <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                Or try Automated Email Reset &rarr;
-              </Link>
               <button
                 type="button"
                 onClick={() => setShowHelp(false)}
-                className="btn bg-indigo-600 hover:bg-indigo-500 text-xs py-2"
+                className="btn w-full bg-indigo-600 hover:bg-indigo-500 text-xs py-2"
               >
                 Got it, close
               </button>
